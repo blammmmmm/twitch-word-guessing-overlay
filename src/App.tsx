@@ -22,7 +22,6 @@ function App() {
     );
 
   const KICK = urlParams.get("kick");
-
   const SPEED = urlParams.get("speed");
   const DELAY = urlParams.get("delay");
   const RESTART_SPEED = urlParams.get("restartspeed");
@@ -34,7 +33,6 @@ function App() {
   const WIPE_LEADERBOARD = urlParams.get("wipeleaderboard");
 
   const [wordListInitialized, setWordListInitialized] = useState<boolean>(false);
-
   const [displayWord, setDisplayWord] = useState<string[]>([]);
   const [winner, setWinner] = useState<string>();
   const [showLeaderboard, setShowLeaderboard] = useState<boolean>(false);
@@ -65,17 +63,6 @@ function App() {
   useTwitchChat(config, fetchedWordList);
   useKickChat(config, fetchedWordList);
 
-  if (!TWITCH_CHANNEL)
-    return (
-      <>
-        You need to put the twitch channel in the url! example:{" "}
-        <a href="https://repo.pogly.gg/wordguesser/?channel=bobross">
-          https://repo.pogly.gg/wordguesser/?channel=bobross
-        </a>
-        !
-      </>
-    );
-
   useEffect(() => {
     const saveLeaderboard = String(SAVE_LEADERBOARD).toLowerCase() === "true";
     const wipeLeaderboard = String(WIPE_LEADERBOARD).toLowerCase() === "true";
@@ -89,36 +76,76 @@ function App() {
     }
 
     if (!fetchedWordList || wordListInitialized) return;
+
     setWordListInitialized(true);
     config.current.WordList = fetchedWordList;
 
     initializeGame();
   }, [fetchedWordList]);
 
+  // Full page safety refresh every 90 minutes for long IRL streams
+  useEffect(() => {
+    const reloadTimer = window.setTimeout(() => {
+      window.location.reload();
+    }, 90 * 60 * 1000);
+
+    return () => window.clearTimeout(reloadTimer);
+  }, []);
+
+  const clearCurrentInterval = () => {
+    if (config.current.IntervalIdRef) {
+      clearInterval(config.current.IntervalIdRef);
+      config.current.IntervalIdRef = null;
+    }
+  };
+
   const initializeGame = () => {
     const _config: GameConfig = config.current;
 
+    clearCurrentInterval();
+
     if (_config.WordList.length === 0) return;
+
     const clueCount = INITIAL_CLUES ? Number(INITIAL_CLUES) : 2;
     _config.RevealCount = clueCount;
 
     const selectedWord: string = _config.WordList[Math.floor(Math.random() * _config.WordList.length)];
     _config.Word = decodeURIComponent(selectedWord);
 
-    setDisplayWord(selectedWord.split("").map((letter, index) => (index < clueCount ? letter : "_")));
-    _config.IsGameOver = false;
+    setDisplayWord(_config.Word.split("").map((letter, index) => (index < clueCount ? letter : "_")));
 
-    const interval = setInterval(() => {
-      if (_config.RevealCount >= _config.Word!.length) return clearInterval(interval);
+    _config.IsGameOver = false;
+    _config.setWinner("");
+
+    const interval = window.setInterval(() => {
+      if (!_config.Word) {
+        clearCurrentInterval();
+        return;
+      }
+
+      if (_config.IsGameOver) {
+        clearCurrentInterval();
+        return;
+      }
+
+      if (_config.RevealCount >= _config.Word.length) {
+        clearCurrentInterval();
+
+        window.setTimeout(() => {
+          initializeGame();
+        }, _config.RestartSpeed);
+
+        return;
+      }
+
       _config.RevealCount += 1;
 
-      setDisplayWord((prev) =>
-        _config.Word!.split("").map((letter, index) => (index < _config.RevealCount ? letter : prev[index] || "_")),
+      setDisplayWord(
+        _config.Word.split("").map((letter, index) => (index < _config.RevealCount ? letter : "_")),
       );
     }, _config.ClueSpeed + _config.ClueDelay);
 
     _config.IntervalIdRef = interval;
-    _config.setWinner("");
   };
 
   const updateLeaderboard = (winnerName: string) => {
@@ -141,11 +168,13 @@ function App() {
   const showLeaderboardUI = () => {
     const _config: GameConfig = config.current;
 
+    clearCurrentInterval();
+
     setShowLeaderboard(true);
     _config.GameIndex = 0;
 
-    const timer = window.setInterval(() => {
-      clearInterval(timer);
+    const timer = window.setTimeout(() => {
+      window.clearTimeout(timer);
 
       setShowLeaderboard(false);
       initializeGame();
