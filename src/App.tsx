@@ -83,7 +83,6 @@ function App() {
     initializeGame();
   }, [fetchedWordList]);
 
-  // Full page safety refresh every 90 minutes for long IRL streams
   useEffect(() => {
     const reloadTimer = window.setTimeout(() => {
       window.location.reload();
@@ -99,6 +98,28 @@ function App() {
     }
   };
 
+  const getNextWord = () => {
+    const _config: GameConfig = config.current;
+
+    const usedWordsRaw = localStorage.getItem("wg_used_words");
+    let usedWords: string[] = usedWordsRaw ? JSON.parse(usedWordsRaw) : [];
+
+    let availableWords = _config.WordList.filter((word) => !usedWords.includes(word));
+
+    if (availableWords.length === 0) {
+      usedWords = [];
+      availableWords = _config.WordList;
+      localStorage.removeItem("wg_used_words");
+    }
+
+    const selectedWord = availableWords[Math.floor(Math.random() * availableWords.length)];
+
+    usedWords.push(selectedWord);
+    localStorage.setItem("wg_used_words", JSON.stringify(usedWords));
+
+    return selectedWord;
+  };
+
   const initializeGame = () => {
     const _config: GameConfig = config.current;
 
@@ -109,7 +130,7 @@ function App() {
     const clueCount = INITIAL_CLUES ? Number(INITIAL_CLUES) : 2;
     _config.RevealCount = clueCount;
 
-    const selectedWord: string = _config.WordList[Math.floor(Math.random() * _config.WordList.length)];
+    const selectedWord: string = getNextWord();
     _config.Word = decodeURIComponent(selectedWord);
 
     setDisplayWord(_config.Word.split("").map((letter, index) => (index < clueCount ? letter : "_")));
